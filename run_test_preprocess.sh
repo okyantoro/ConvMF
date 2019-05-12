@@ -1,7 +1,7 @@
 python ./run.py \
--d ./test/ml-10m/0.2/ \
--a ./test/ml-10m/ \
+-d ./fixtures/ml-latest-small_mod/data/ \
+-a ./fixtures/ml-latest-small_mod/data/ \
 -c True \
--r ./data/movielens/ml-10m_ratings.dat \
--i ./data/movielens/Plot.idmap \
+-r ./fixtures/ml-latest-small_mod/ratings.csv \
+-i ./fixtures/ml-latest-small_mod/movies.csv \
 -m 1
