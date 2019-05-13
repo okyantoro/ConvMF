@@ -8,10 +8,11 @@ np.random.seed(1337)
 
 from keras.callbacks import EarlyStopping
 from keras.models import Sequential
-from keras.layers.convolutional import Convolution2D, MaxPooling2D
+from keras.layers.convolutional import Conv2D, MaxPooling2D
 from keras.layers.core import Reshape, Flatten, Dropout, Dense
-from keras.layers.embeddings import Embedding
-from keras.models import Graph
+from keras.layers import Embedding
+from keras.models import Model
+from keras.layers import Input, concatenate
 from keras.preprocessing import sequence
 
 
@@ -31,44 +32,43 @@ class CNN_module():
         projection_dimension = output_dimesion
 
         filter_lengths = [3, 4, 5]
-        self.model = Graph()
 
         '''Embedding Layer'''
-        self.model.add_input(name='input', input_shape=(max_len,), dtype=int)
+        model_input = Input(shape=(max_len,), dtype='int32', name='input')
 
         if init_W is None:
-            self.model.add_node(Embedding(
-                max_features, emb_dim, input_length=max_len), name='sentence_embeddings', input='input')
+            model_embedding = Embedding(max_features, emb_dim, input_length=max_len)(model_input)
         else:
-            self.model.add_node(Embedding(max_features, emb_dim, input_length=max_len, weights=[
-                                init_W / 20]), name='sentence_embeddings', input='input')
+            model_embedding = Embedding(max_features, emb_dim, input_length=max_len, weights=[
+                                init_W / 20])(model_input)
 
         '''Convolution Layer & Max Pooling Layer'''
         for i in filter_lengths:
             model_internal = Sequential()
-            model_internal.add(
-                Reshape(dims=(1, self.max_len, emb_dim), input_shape=(self.max_len, emb_dim)))
-            model_internal.add(Convolution2D(
-                nb_filters, i, emb_dim, activation="relu"))
-            model_internal.add(MaxPooling2D(
-                pool_size=(self.max_len - i + 1, 1)))
+            model_internal.add(Reshape((self.max_len,emb_dim,1),input_shape=(self.max_len, emb_dim)))
+            model_internal.add(Conv2D(nb_filters, (i,emb_dim),strides=(1,1),activation="relu"))
+            model_internal.add(MaxPooling2D(pool_size=(self.max_len - i + 1, 1)))
             model_internal.add(Flatten())
 
-            self.model.add_node(model_internal, name='unit_' +
-                                str(i), input='sentence_embeddings')
+            if i==3:
+               model_convolutional_3=model_internal(model_embedding)
+            if i==4:
+               model_convolutional_4=model_internal(model_embedding) 
+            if i==5:
+                model_convolutional_5=model_internal(model_embedding)
 
         '''Dropout Layer'''
-        self.model.add_node(Dense(vanila_dimension, activation='tanh'),
-                            name='fully_connect', inputs=['unit_' + str(i) for i in filter_lengths])
-        self.model.add_node(Dropout(dropout_rate),
-                            name='dropout', input='fully_connect')
+        model_chuanlian=concatenate([model_convolutional_3,model_convolutional_4,model_convolutional_5])
+        model_dropout = Dense(vanila_dimension, activation='tanh')(model_chuanlian)
+        model_dropout_all = Dropout(dropout_rate)(model_dropout)
+
         '''Projection Layer & Output Layer'''
-        self.model.add_node(Dense(projection_dimension, activation='tanh'),
-                            name='projection', input='dropout')
+        model_projection=Dense(projection_dimension, activation='tanh')(model_dropout_all)
 
         # Output Layer
-        self.model.add_output(name='output', input='projection')
-        self.model.compile('rmsprop', {'output': 'mse'})
+        model_output=Model(inputs=model_input,outputs=model_projection)
+        model_output.compile(optimizer='rmsprop', loss='mse')
+        self.model=model_output
 
     def load_model(self, model_path):
         self.model.load_weights(model_path)
@@ -82,33 +82,33 @@ class CNN_module():
 
         filter_lengths = [3, 4, 5]
         print("Build model...")
-        self.qual_model = Graph()
+
         self.qual_conv_set = {}
         '''Embedding Layer'''
-        self.qual_model.add_input(
-            name='input', input_shape=(max_len,), dtype=int)
+        qual_model_input=Input(input_shape=(max_len,), dtype='int32',name='qual_model_input')
 
-        self.qual_model.add_node(Embedding(max_features, emb_dim, input_length=max_len, weights=self.model.nodes['sentence_embeddings'].get_weights()),
-                                 name='sentence_embeddings', input='input')
+        qual_model_embedding=Embedding(max_features, emb_dim, input_length=max_len, weights=model_embedding.get_weights())(qual_model_input)
 
         '''Convolution Layer & Max Pooling Layer'''
         for i in filter_lengths:
             model_internal = Sequential()
-            model_internal.add(
-                Reshape(dims=(1, max_len, emb_dim), input_shape=(max_len, emb_dim)))
-            self.qual_conv_set[i] = Convolution2D(nb_filters, i, emb_dim, activation="relu", weights=self.model.nodes[
-                                                  'unit_' + str(i)].layers[1].get_weights())
+            model_internal.add(Reshape((max_len, emb_dim,1), input_shape=(max_len, emb_dim)))
+            self.qual_conv_set[i] = Conv2D(nb_filters,(i,emb_dim),strides=(1,1),activation="relu",weights='model_convolutional_'+str(i).layers[1].get_weights())
             model_internal.add(self.qual_conv_set[i])
             model_internal.add(MaxPooling2D(pool_size=(max_len - i + 1, 1)))
             model_internal.add(Flatten())
+            
+            if i==3:
+               qual_model_convolutional_3=model_internal(qual_model_embedding)
+            if i==4:
+               qual_model_convolutional_4=model_internal(qual_model_embedding)
+            if i==5:
+               qual_model_convolutional_5=model_internal(qual_model_embedding)
+ 
+        qual_model_output=Model(inputs=qual_model_input,outputs=['qual_model_convolutional_'+str(i) for i in filer_lengths]) 
 
-            self.qual_model.add_node(
-                model_internal, name='unit_' + str(i), input='sentence_embeddings')
-            self.qual_model.add_output(
-                name='output_' + str(i), input='unit_' + str(i))
-
-        self.qual_model.compile(
-            'rmsprop', {'output_3': 'mse', 'output_4': 'mse', 'output_5': 'mse'})
+        qual_model_output.compile(optimizer='rmsprop', loss={'qual_model_convolutional_3': 'mse', 'qual_model_convolutional_4': 'mse', 'qual_model_convolutional_5': 'mse'})
+        self.qual_model=qual_model_output
 
     def train(self, X_train, V, item_weight, seed):
         X_train = sequence.pad_sequences(X_train, maxlen=self.max_len)
@@ -120,8 +120,7 @@ class CNN_module():
         item_weight = np.random.permutation(item_weight)
 
         print("Train...CNN module")
-        history = self.model.fit({'input': X_train, 'output': V},
-                                 verbose=0, batch_size=self.batch_size, nb_epoch=self.nb_epoch, sample_weight={'output': item_weight})
+        history = self.model.fit(x=X_train,y=V,verbose=0, batch_size=self.batch_size, epochs=self.nb_epoch, sample_weight=item_weight)
 
         # cnn_loss_his = history.history['loss']
         # cmp_cnn_loss = sorted(cnn_loss_his)[::-1]
@@ -132,5 +131,5 @@ class CNN_module():
     def get_projection_layer(self, X_train):
         X_train = sequence.pad_sequences(X_train, maxlen=self.max_len)
         Y = self.model.predict(
-            {'input': X_train}, batch_size=len(X_train))['output']
+            {'input': X_train}, batch_size=len(X_train))
         return Y

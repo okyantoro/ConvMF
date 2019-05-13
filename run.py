@@ -3,6 +3,7 @@ Created on Dec 9, 2015
 
 @author: donghyun
 '''
+import os; os.environ['KERAS_BACKEND'] = 'theano'; os.environ["CUDA_VISIBLE_DEVICES"]="-1"  
 import argparse
 import sys
 from data_manager import Data_Factory
